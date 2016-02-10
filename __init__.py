@@ -84,6 +84,14 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
 
         return self.parent.channel_impedance_structures(df_channel_impedances)
 
+    def on_execute__save_channel_impedances(self, request):
+        data = decode_content_data(request)
+
+        output_path = data['output_path']
+        hdf_root = data.get('hdf_root')
+        self.parent.save_channel_impedances(data['impedance_strutures'],
+                                            output_path, hdf_root)
+
     def measure_channel_impedances(self, channels, voltage, frequency,
                                    wait_func=None, **kwargs):
         channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
@@ -164,7 +172,9 @@ class DeviceQualityControlPlugin(Plugin):
             self.plugin = None
 
     def save_channel_impedances(self, impedance_structures, output_path,
-                                hdf_root=''):
+                                hdf_root=None):
+        hdf_root = hdf_root or ''
+
         # Strip `'/'` characters off `hdf_root` argument since we add `'/'`
         # when joining with relative paths below.
         while hdf_root.endswith('/'):
