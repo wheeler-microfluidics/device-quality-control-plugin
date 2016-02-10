@@ -57,21 +57,32 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
             self.on_command_recv(msg_frames)
         return True
 
-    def on_execute__measure_channel_impedances(self, request):
-        data = decode_content_data(request)
-
+    def measure_channel_impedances_monitored(self, **kwargs):
         def wait_func(duration_s, i, channel_i):
             for j in xrange(20):
                 gtk.do_main_iteration()
-            print '\r[%s] %5d/%d' % (channel_i, i, len(data['channels']))
+            print '\r[%s] %5d/%d' % (channel_i, i, len(kwargs['channels']))
 
         try:
-            return self.measure_channel_impedances(data['channels'],
-                                                   data['voltage'],
-                                                   data['frequency'],
+            return self.measure_channel_impedances(kwargs['channels'],
+                                                   kwargs['voltage'],
+                                                   kwargs['frequency'],
                                                    wait_func=wait_func)
         except:
-            logger.error(str(data), exc_info=True)
+            logger.error(str(kwargs), exc_info=True)
+
+    def on_execute__measure_channel_impedances(self, request):
+        data = decode_content_data(request)
+
+        return self.measure_channel_impedances_monitored(**data)
+
+    def on_execute__channel_impedance_structures(self, request):
+        data = decode_content_data(request)
+
+        df_channel_impedances = \
+            self.measure_channel_impedances_monitored(**data)
+
+        return self.parent.channel_impedance_structures(df_channel_impedances)
 
     def measure_channel_impedances(self, channels, voltage, frequency,
                                    wait_func=None, **kwargs):
@@ -119,20 +130,6 @@ class DeviceQualityControlPlugin(Plugin):
     version = get_plugin_info(path(__file__).parent).version
     plugin_name = get_plugin_info(path(__file__).parent).plugin_name
 
-    '''
-    StepFields
-    ---------
-
-    A flatland Form specifying the per step options for the current plugin.
-    Note that nested Form objects are not supported.
-
-    Since we subclassed StepOptionsController, an API is available to access and
-    modify these attributes.  This API also provides some nice features
-    automatically:
-        -all fields listed here will be included in the protocol grid view
-            (unless properties=dict(show_in_gui=False) is used)
-        -the values of these fields will be stored persistently for each step
-    '''
     def __init__(self):
         self.name = self.plugin_name
         self.plugin = None
@@ -166,29 +163,41 @@ class DeviceQualityControlPlugin(Plugin):
         if self.plugin is not None:
             self.plugin = None
 
-    def save_channel_impedances(self, df_channel_impedances, output_path,
-                                hdf_root='/'):
+    def save_channel_impedances(self, impedance_structures, output_path,
+                                hdf_root=''):
+        # Strip `'/'` characters off `hdf_root` argument since we add `'/'`
+        # when joining with relative paths below.
+        while hdf_root.endswith('/'):
+            hdf_root = hdf_root[:-1]
+
+        for hdf_relpath_i, structure_i in impedance_structures.iteritems():
+            hdf_path_i = '/'.join([hdf_root, hdf_relpath_i])
+            if hasattr(structure_i, 'columns'):
+                data_columns = [c for c in structure_i.columns if '/' not in c]
+            else:
+                data_columns = True
+            structure_i.to_hdf(str(output_path), hdf_path_i, format='t',
+                               complib='zlib', complevel=5,
+                               data_columns=data_columns)
+
+    def channel_impedance_structures(self, df_channel_impedances):
+        hdf_impedance_path = 'channel_impedances'
+        hdf_device = 'device'
+        hdf_device_shapes = 'shapes'
+
         device = self.plugin.execute('wheelerlab.device_info_plugin',
-                                     'get_device', timeout_s=1.)
+                                     'get_device', timeout_s=5.)
 
-        hdf_impedance_path = '/'.join([hdf_root, 'channel_impedances'])
-        hdf_device = '/'.join([hdf_root, 'device'])
-        hdf_device_shapes = '/'.join([hdf_device, 'shapes'])
-
-        df_channel_impedances.to_hdf(str(output_path), hdf_impedance_path,
-                                     format='t', complib='zlib', complevel=5,
-                                     data_columns=True)
-        device.df_shapes.to_hdf(str(output_path), hdf_device_shapes,
-                                format='t', complib='zlib', complevel=5,
-                                data_columns=[c for c in device.df_shapes
-                                              .columns if '/' not in c])
+        result = {}
+        result[hdf_impedance_path] = df_channel_impedances
+        result[hdf_device_shapes] = device.df_shapes
 
         for series_name_i in ('electrodes_by_channel', 'electrode_areas',
                               'channels_by_electrode', 'channel_areas'):
             hdf_path_i = '/'.join([hdf_device, series_name_i])
             data = getattr(device, series_name_i).sort_index()
-            data.to_hdf(str(output_path), hdf_path_i, format='t',
-                        complib='zlib', complevel=5, data_columns=True)
+            result[hdf_path_i] = data
+        return result
 
 
 PluginGlobals.pop_env()
