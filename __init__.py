@@ -3,10 +3,10 @@ Copyright 2015 Christian Fobel
 
 This file is part of device_quality_control_plugin.
 
-device_quality_control_plugin is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+device_quality_control_plugin is free software: you can redistribute it and/or
+modify it under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your option)
+any later version.
 
 dmf_control_board is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,6 +20,7 @@ from datetime import datetime
 import logging
 import os
 
+from dmf_control_board_firmware.chip_test.plot import plot_capacitance_summary
 from microdrop.gui.channel_sweep import get_channel_sweep_parameters
 from microdrop.app_context import get_app, get_hub_uri
 from microdrop.plugin_helpers import get_plugin_info
@@ -210,7 +211,6 @@ class DeviceQualityControlPlugin(Plugin):
                                data_columns=data_columns)
         if save_plot:
             import matplotlib as mpl
-            from .plot import plot_capacitance_summary
 
             output_path = path(output_path)
             pdf_path = output_path.parent.joinpath(output_path.namebase +
