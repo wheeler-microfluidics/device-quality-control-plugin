@@ -16,13 +16,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with device_quality_control_plugin.  If not, see <http://www.gnu.org/licenses/>.
 """
-#from collections import OrderedDict
 from datetime import datetime
 import logging
+import os
 
-#from flatland import Integer, Form
-#from flatland.validation import ValueAtLeast
-from microdrop.app_context import get_hub_uri
+from microdrop.gui.channel_sweep import get_channel_sweep_parameters
+from microdrop.app_context import get_app, get_hub_uri
 from microdrop.plugin_helpers import get_plugin_info
 from microdrop.plugin_manager import (PluginGlobals, Plugin, IPlugin,
                                       implements)
@@ -58,15 +57,18 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
         return True
 
     def measure_channel_impedances_monitored(self, **kwargs):
+        n_sampling_windows = kwargs.pop('n_sampling_windows', 5)
         def wait_func(duration_s, i, channel_i):
             for j in xrange(20):
-                gtk.do_main_iteration()
-            print '\r[%s] %5d/%d' % (channel_i, i, len(kwargs['channels']))
+                gtk.main_iteration_do()
+            print '\rChannel: %s (%5d/%d)' % (channel_i, i + 1,
+                                              len(kwargs['channels'])),
 
         try:
             return self.measure_channel_impedances(kwargs['channels'],
                                                    kwargs['voltage'],
                                                    kwargs['frequency'],
+                                                   n_sampling_windows,
                                                    wait_func=wait_func)
         except:
             logger.error(str(kwargs), exc_info=True)
@@ -87,18 +89,21 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
     def on_execute__save_channel_impedances(self, request):
         data = decode_content_data(request)
 
-        output_path = data['output_path']
-        hdf_root = data.get('hdf_root')
-        self.parent.save_channel_impedances(data['impedance_strutures'],
-                                            output_path, hdf_root)
+        impedance_structures = data.pop('impedance_structures')
+        output_path = data.pop('output_path')
+        self.parent.save_channel_impedances(impedance_structures,
+                                            output_path, **data)
 
     def measure_channel_impedances(self, channels, voltage, frequency,
-                                   wait_func=None, **kwargs):
+                                   n_sampling_windows, wait_func=None,
+                                   **kwargs):
         channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
-                                     'channel_count', timeout_s=1.)
+                                     'channel_count', timeout_s=1.,
+                                     wait_func=lambda *args: refresh_gui(0, 0))
         assert(all([c < channel_count for c in channels]))
 
         frames = []
+        print '[measure_channel_impedances]', channels
 
         for i, channel_i in enumerate(channels):
             channel_states = [0] * channel_count
@@ -113,8 +118,11 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
                     self.execute('wheelerlab.dmf_control_board_plugin',
                                  'measure_impedance', voltage=voltage,
                                  frequency=frequency, state=channel_states,
+                                 n_sampling_windows=n_sampling_windows,
                                  timeout_s=5., **kwargs).dropna()
             except RuntimeError:
+                logger.error('[measure_channel_impedances] channel_i=%s',
+                             channel_i, exc_info=True)
                 break
             df_result_i.insert(2, 'channel_i', channel_i)
             df_result_i.insert(0, 'utc_start', start_time)
@@ -153,6 +161,16 @@ class DeviceQualityControlPlugin(Plugin):
         self.plugin_timeout_id = gobject.timeout_add(10,
                                                      self.plugin.check_sockets)
 
+        # Add menu item to launch channel impedance scan.
+        self.menu_channel_impedance_scan = gtk.MenuItem('Run channel '
+                                                        'impedance scan...')
+        self.menu_channel_impedance_scan.connect("activate", lambda *args:
+                                                 self.channel_impedance_scan())
+        app = get_app()
+        app.main_window_controller.menu_tools.add(self
+                                                  .menu_channel_impedance_scan)
+        self.menu_channel_impedance_scan.show()
+
     def on_plugin_disable(self):
         """
         Handler called once the plugin instance is disabled.
@@ -172,7 +190,8 @@ class DeviceQualityControlPlugin(Plugin):
             self.plugin = None
 
     def save_channel_impedances(self, impedance_structures, output_path,
-                                hdf_root=None):
+                                hdf_root=None, save_plot=False,
+                                open_plot=False):
         hdf_root = hdf_root or ''
 
         # Strip `'/'` characters off `hdf_root` argument since we add `'/'`
@@ -189,6 +208,25 @@ class DeviceQualityControlPlugin(Plugin):
             structure_i.to_hdf(str(output_path), hdf_path_i, format='t',
                                complib='zlib', complevel=5,
                                data_columns=data_columns)
+        if save_plot:
+            import matplotlib as mpl
+            from .plot import plot_capacitance_summary
+
+            output_path = path(output_path)
+            pdf_path = output_path.parent.joinpath(output_path.namebase +
+                                                   '.pdf')
+            style_path = (path(__file__).parent
+                          .joinpath('custom-style.mplstyle'))
+
+            with mpl.style.context(('ggplot', style_path)):
+                axes = plot_capacitance_summary(impedance_structures)
+                fig = axes[0].get_figure()
+                axes[0].set_title(output_path.namebase)
+                fig.savefig(pdf_path, bbox_inches='tight')
+
+            if open_plot:
+                # TODO: Add support for opening on Linux/OSX (e.g., `xdg-open`)
+                os.startfile(pdf_path)
 
     def channel_impedance_structures(self, df_channel_impedances):
         hdf_impedance_path = 'channel_impedances'
@@ -196,7 +234,8 @@ class DeviceQualityControlPlugin(Plugin):
         hdf_device_shapes = 'shapes'
 
         device = self.plugin.execute('wheelerlab.device_info_plugin',
-                                     'get_device', timeout_s=5.)
+                                     'get_device', timeout_s=5.,
+                                     wait_func=lambda *args: refresh_gui(0, 0))
 
         result = {}
         result[hdf_impedance_path] = df_channel_impedances
@@ -208,6 +247,74 @@ class DeviceQualityControlPlugin(Plugin):
             data = getattr(device, series_name_i).sort_index()
             result[hdf_path_i] = data
         return result
+
+    def channel_impedance_scan(self, default_filename='channel-impedances.h5'):
+        wait_func = lambda *args: refresh_gui(0, 0)
+        #try:
+            ## Test communication with control board hardware by querying the
+            ## number of channels.
+            #self.plugin.execute('wheelerlab.dmf_control_board_plugin',
+                                #'channel_count', timeout_s=1.,
+                                #wait_func=wait_func)
+        #except:
+            #logger.error('Error communicating with control board.  Aborting '
+                         #'scan.')
+            #logger.info('Error communicating with control board.',
+                        #exc_info=True)
+            #return
+
+        dialog = gtk.FileChooserDialog(title='Save channels impedance',
+                                       action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                                       buttons=(gtk.STOCK_CANCEL,
+                                                gtk.RESPONSE_CANCEL,
+                                                gtk.STOCK_SAVE,
+                                                gtk.RESPONSE_OK))
+        file_filter = gtk.FileFilter()
+        file_filter.set_name('HDF file (*.h5)')
+        file_filter.add_pattern('*.h5')
+
+        app = get_app()
+        dialog.set_current_folder(app.experiment_log.get_log_path())
+        dialog.set_current_name(default_filename)
+        dialog.set_do_overwrite_confirmation(True)
+        dialog.set_filter(file_filter)
+
+        response = dialog.run()
+        output_path = dialog.get_filename()
+
+        dialog.destroy()
+
+        if response != gtk.RESPONSE_OK:
+            return
+
+        device = self.plugin.execute('wheelerlab.device_info_plugin',
+                                     'get_device', timeout_s=1.,
+                                     wait_func=wait_func)
+
+        default_channels = pd.Series(True, index=device.channel_areas.index
+                                     .sort_values())
+        sweep_parameters = get_channel_sweep_parameters(voltage=100,
+                                                        frequency=10e3,
+                                                        channels=
+                                                        default_channels)
+        voltage = sweep_parameters['voltage']
+        frequency = sweep_parameters['frequency']
+        channels = sweep_parameters['channels']
+
+        impedance_structures = \
+            self.plugin.execute('wheelerlab.device_quality_control_plugin',
+                                'channel_impedance_structures',
+                                channels=channels, voltage=voltage,
+                                frequency=frequency, timeout_s=5 *
+                                len(channels), wait_func=wait_func)
+        self.plugin.execute('wheelerlab.device_quality_control_plugin',
+                            'save_channel_impedances',
+                            output_path=output_path,
+                            impedance_structures=impedance_structures,
+                            save_plot=True, open_plot=True,
+                            timeout_s=5 * len(channels),
+                            wait_func=wait_func)
+        logging.warning('Channel impedances saved.')
 
 
 PluginGlobals.pop_env()
