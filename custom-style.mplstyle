@@ -1,0 +1,32 @@
+image.cmap: viridis
+patch.facecolor: 5da5da  # medium blue
+
+axes.prop_cycle: cycler('color', ['4d4d4d', '5da5da', 'faa43a', '60bd68', 'f17cb0', 'b2912f', 'b276b2', 'decf3f', 'f15854', '000000', '265dab', 'df5c24', '059748', 'e5126f', '9d722a', '7b3a96', 'c7b42e', 'cb2027', '8c8c8c', '88bde6', 'fbb258', '90cd97', 'f6aac9', 'bfa554', 'bc99c7', 'eddd46', 'f07e6e'])
+                   # Med  , Grey   , 4d4d4d
+                   # Med  , Blue   , 5da5da
+                   # Med  , Orange , faa43a
+                   # Med  , Green  , 60bd68
+                   # Med  , Pink   , f17cb0
+                   # Med  , Brown  , b2912f
+                   # Med  , Purple , b276b2
+                   # Med  , Yellow , decf3f
+                   # Med  , Red    , f15854
+                   # Dark , Grey   , 000000
+                   # Dark , Blue   , 265dab
+                   # Dark , Orange , df5c24
+                   # Dark , Green  , 059748
+                   # Dark , Pink   , e5126f
+                   # Dark , Brown  , 9d722a
+                   # Dark , Purple , 7b3a96
+                   # Dark , Yellow , c7b42e
+                   # Dark , Red    , cb2027
+                   # Lite , Grey   , 8c8c8c
+                   # Lite , Blue   , 88bde6
+                   # Lite , Orange , fbb258
+                   # Lite , Green  , 90cd97
+                   # Lite , Pink   , f6aac9
+                   # Lite , Brown  , bfa554
+                   # Lite , Purple , bc99c7
+                   # Lite , Yellow , eddd46
+                   # Lite , Red    , f07e6e
+#['E24A33', '348ABD', '988ED5', '777777', 'FBC15E', '8EBA42', 'FFB5B8']
