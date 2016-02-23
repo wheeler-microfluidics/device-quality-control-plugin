@@ -1,2 +1,2 @@
 dmf-control-board-firmware>=1.0.post28
-svg-model>=0.5.post19
+svg-model>=0.5.post20
