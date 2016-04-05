@@ -32,6 +32,7 @@ from zmq_plugin.plugin import Plugin as ZmqPlugin
 from zmq_plugin.schema import decode_content_data
 import gobject
 import gtk
+import numpy as np
 import pandas as pd
 import zmq
 
@@ -59,24 +60,16 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
 
     def measure_channel_impedances_monitored(self, **kwargs):
         n_sampling_windows = kwargs.pop('n_sampling_windows', 5)
-        def wait_func(duration_s, i, channel_i):
-            for j in xrange(20):
-                gtk.main_iteration_do()
-            print '\rChannel: %s (%5d/%d)' % (channel_i, i + 1,
-                                              len(kwargs['channels'])),
-
         try:
             return self.measure_channel_impedances(kwargs['channels'],
                                                    kwargs['voltage'],
                                                    kwargs['frequency'],
-                                                   n_sampling_windows,
-                                                   wait_func=wait_func)
+                                                   n_sampling_windows)
         except:
             logger.error(str(kwargs), exc_info=True)
 
     def on_execute__measure_channel_impedances(self, request):
         data = decode_content_data(request)
-
         return self.measure_channel_impedances_monitored(**data)
 
     def on_execute__channel_impedance_structures(self, request):
@@ -92,50 +85,31 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
 
         impedance_structures = data.pop('impedance_structures')
         output_path = data.pop('output_path')
-        self.parent.save_channel_impedances(impedance_structures,
-                                            output_path, **data)
+        try:
+            self.parent.save_channel_impedances(impedance_structures,
+                                                output_path, **data)
+        except Exception, error:
+            import pdb; pdb.set_trace()
+            raise
 
     def measure_channel_impedances(self, channels, voltage, frequency,
-                                   n_sampling_windows, wait_func=None,
-                                   **kwargs):
+                                   n_sampling_windows, **kwargs):
         channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
                                      'channel_count', timeout_s=1.,
                                      wait_func=lambda *args: refresh_gui(0, 0))
         assert(all([c < channel_count for c in channels]))
 
-        frames = []
         print '[measure_channel_impedances]', channels
 
-        for i, channel_i in enumerate(channels):
-            channel_states = [0] * channel_count
-            channel_states[channel_i] = 1
-            start_time = datetime.utcnow()
-            if wait_func is not None:
-                def wait_func_i(duration_s):
-                    wait_func(duration_s, i, channel_i)
-                kwargs['wait_func'] = wait_func_i
-            try:
-                df_result_i = \
-                    self.execute('wheelerlab.dmf_control_board_plugin',
-                                 'measure_impedance', voltage=voltage,
+        if 'wait_func' not in kwargs:
+           kwargs['wait_func'] = lambda *args: refresh_gui(0, 0)
+        channel_states = np.zeros(channel_count, dtype=int)
+        channel_states[list(channels)] = 1
+        df_result = self.execute('wheelerlab.dmf_control_board_plugin',
+                                 'sweep_channels', voltage=voltage,
                                  frequency=frequency, state=channel_states,
                                  n_sampling_windows=n_sampling_windows,
                                  timeout_s=5., **kwargs).dropna()
-            except RuntimeError:
-                logger.error('[measure_channel_impedances] channel_i=%s',
-                             channel_i, exc_info=True)
-                break
-            df_result_i.insert(2, 'channel_i', channel_i)
-            df_result_i.insert(0, 'utc_start', start_time)
-            frames.append(df_result_i)
-        if not frames:
-            df_result = pd.DataFrame(None, columns=['utc_start', 'seconds',
-                                                    'channel_i', 'frequency',
-                                                    'V_actuation',
-                                                    'capacitance',
-                                                    'impedance'])
-        else:
-            df_result = pd.concat(frames)
         return df_result.loc[df_result.V_actuation > .9 * voltage]
 
 
