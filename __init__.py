@@ -109,7 +109,7 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
                                  'sweep_channels', voltage=voltage,
                                  frequency=frequency, state=channel_states,
                                  n_sampling_windows=n_sampling_windows,
-                                 timeout_s=5., **kwargs).dropna()
+                                 timeout_s=30., **kwargs).dropna()
         return df_result.loc[df_result.V_actuation > .9 * voltage]
 
 
