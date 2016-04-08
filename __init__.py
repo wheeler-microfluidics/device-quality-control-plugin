@@ -16,7 +16,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with device_quality_control_plugin.  If not, see <http://www.gnu.org/licenses/>.
 """
-from datetime import datetime
 import logging
 import os
 
@@ -89,7 +88,10 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
             self.parent.save_channel_impedances(impedance_structures,
                                                 output_path, **data)
         except Exception, error:
-            import pdb; pdb.set_trace()
+            app = get_app()
+            if app.config.data.get('advanced_ui', False):
+                # Launch debugger to inspect state.
+                import pdb; pdb.set_trace()
             raise
 
     def measure_channel_impedances(self, channels, voltage, frequency,
