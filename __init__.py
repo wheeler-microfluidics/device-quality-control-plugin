@@ -59,11 +59,15 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
 
     def measure_channel_impedances_monitored(self, **kwargs):
         n_sampling_windows = kwargs.pop('n_sampling_windows', 5)
+        channels = kwargs.pop('channels')
+        voltage = kwargs.pop('voltage')
+        frequency = kwargs.pop('frequency')
+
         try:
-            return self.measure_channel_impedances(kwargs['channels'],
-                                                   kwargs['voltage'],
-                                                   kwargs['frequency'],
-                                                   n_sampling_windows)
+            return self.measure_channel_impedances(channels, voltage,
+                                                   frequency,
+                                                   n_sampling_windows,
+                                                   **kwargs)
         except:
             logger.error(str(kwargs), exc_info=True)
 
@@ -96,6 +100,23 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
 
     def measure_channel_impedances(self, channels, voltage, frequency,
                                    n_sampling_windows, **kwargs):
+        '''
+        Args
+        ----
+
+            channels (list) : List of channels to scan.
+            voltage (float) : Voltage to apply during scan.
+            frequency (float) : Frequency to apply during scan.
+            n_sampling_windows (int) : Number of sampling windows to collect
+                for each channel.
+
+        Returns
+        -------
+
+            (pandas.DataFrame) : Table containing one RMS measurement per row
+                and the columns `frequency`, `voltage`, `channel_i`,
+                `V_actuation`, `capacitance`, and `impedance`.
+        '''
         channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
                                      'channel_count', timeout_s=1.,
                                      wait_func=lambda *args: refresh_gui(0, 0))
@@ -139,14 +160,18 @@ class DeviceQualityControlPlugin(Plugin):
                                                      self.plugin.check_sockets)
 
         # Add menu item to launch channel impedance scan.
-        self.menu_channel_impedance_scan = gtk.MenuItem('Run channel '
-                                                        'impedance scan...')
-        self.menu_channel_impedance_scan.connect("activate", lambda *args:
-                                                 self.channel_impedance_scan())
+        menu = [('Run channel impedance scan...', lambda *args:
+                 self.channel_impedance_scan()),
+                ('Run channel impedance scan (slow)...', lambda *args:
+                 self.channel_impedance_scan(slow_scan=True))]
+
         app = get_app()
-        app.main_window_controller.menu_tools.add(self
-                                                  .menu_channel_impedance_scan)
-        self.menu_channel_impedance_scan.show()
+
+        for label_i, func_i in menu:
+            menu_item_i = gtk.MenuItem(label_i)
+            menu_item_i.connect("activate", func_i)
+            app.main_window_controller.menu_tools.add(menu_item_i)
+            menu_item_i.show()
 
     def on_plugin_disable(self):
         """
@@ -224,20 +249,20 @@ class DeviceQualityControlPlugin(Plugin):
             result[hdf_path_i] = data
         return result
 
-    def channel_impedance_scan(self, default_filename='channel-impedances.h5'):
+    def channel_impedance_scan(self, default_filename='channel-impedances.h5',
+                               slow_scan=False):
+        '''
+        Args
+        ----
+
+            default_filename (str) : Default filename to display in save
+                dialog.
+            slow_scan (bool) : If `False`, perform scan using single call to
+                Arduino (use firmware scan method).  Otherwise, make one
+                firmware call for each scanned channel.  May be useful, for
+                example, to verify consistent between slow/fast scans.
+        '''
         wait_func = lambda *args: refresh_gui(0, 0)
-        #try:
-            ## Test communication with control board hardware by querying the
-            ## number of channels.
-            #self.plugin.execute('wheelerlab.dmf_control_board_plugin',
-                                #'channel_count', timeout_s=1.,
-                                #wait_func=wait_func)
-        #except:
-            #logger.error('Error communicating with control board.  Aborting '
-                         #'scan.')
-            #logger.info('Error communicating with control board.',
-                        #exc_info=True)
-            #return
 
         dialog = gtk.FileChooserDialog(title='Save channels impedance',
                                        action=gtk.FILE_CHOOSER_ACTION_SAVE,
@@ -277,12 +302,14 @@ class DeviceQualityControlPlugin(Plugin):
         frequency = sweep_parameters['frequency']
         channels = sweep_parameters['channels']
 
+        # Request scan of channels from 0MQ interface.
         impedance_structures = \
             self.plugin.execute('wheelerlab.device_quality_control_plugin',
                                 'channel_impedance_structures',
                                 channels=channels, voltage=voltage,
-                                frequency=frequency, timeout_s=5 *
-                                len(channels), wait_func=wait_func)
+                                frequency=frequency, slow_scan=slow_scan,
+                                timeout_s=5 * len(channels),
+                                wait_func=wait_func)
         self.plugin.execute('wheelerlab.device_quality_control_plugin',
                             'save_channel_impedances',
                             output_path=output_path,
