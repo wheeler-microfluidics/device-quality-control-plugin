@@ -101,21 +101,23 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
     def measure_channel_impedances(self, channels, voltage, frequency,
                                    n_sampling_windows, **kwargs):
         '''
-        Args
-        ----
-
-            channels (list) : List of channels to scan.
-            voltage (float) : Voltage to apply during scan.
-            frequency (float) : Frequency to apply during scan.
-            n_sampling_windows (int) : Number of sampling windows to collect
-                for each channel.
+        Parameters
+        ----------
+        channels : list
+            List of channels to scan.
+        voltage : float
+            Voltage to apply during scan.
+        frequency : float
+            Frequency to apply during scan.
+        n_sampling_windows : int
+            Number of sampling windows to collect for each channel.
 
         Returns
         -------
-
-            (pandas.DataFrame) : Table containing one RMS measurement per row
-                and the columns `frequency`, `voltage`, `channel_i`,
-                `V_actuation`, `capacitance`, and `impedance`.
+        pandas.DataFrame
+            Table containing one RMS measurement per row and the columns
+            ``frequency``, ``voltage``, ``channel_i``, ``V_actuation``,
+            ``capacitance``, and ``impedance``.
         '''
         channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
                                      'channel_count', timeout_s=1.,
