@@ -1,3 +1,0 @@
-wheeler.dmf-control-board-firmware>=1.2.post13
-svg-model>=0.5.post20
-zmq-plugin>=0.2.post2
