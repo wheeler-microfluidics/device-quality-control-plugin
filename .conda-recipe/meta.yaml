@@ -19,6 +19,7 @@ requirements:
   build:
     - dmf-control-board-firmware >=1.5.0
     - matplotlib
+    - microdrop >=2.4
     - microdrop-plugin-manager >=0.11
     - pandas
     - path_helpers >=0.2.post3
@@ -29,12 +30,17 @@ requirements:
   run:
     - dmf-control-board-firmware >=1.5.0
     - matplotlib
+    - microdrop >=2.4
     - microdrop-plugin-manager >=0.11
     - pandas
     - path_helpers >=0.2.post3
     - svg-model >=0.5.post20
     - wheeler.pygtkhelpers >=0.13.post17
     - zmq-plugin >=0.2.post2
+
+test:
+  commands:
+    - python -c "import sys; import mpm.api; sys.path.insert(0, mpm.api.MICRODROP_CONDA_SHARE.joinpath('plugins', 'available')); import device_quality_control_plugin"
 
 about:
   home: http://github.com/wheeler-microfluidics/device_quality_control_plugin
