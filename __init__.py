@@ -119,7 +119,7 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
             ``frequency``, ``voltage``, ``channel_i``, ``V_actuation``,
             ``capacitance``, and ``impedance``.
         '''
-        channel_count = self.execute('wheelerlab.dmf_control_board_plugin',
+        channel_count = self.execute('dmf_control_board_plugin',
                                      'channel_count', timeout_s=1.,
                                      wait_func=lambda *args: refresh_gui(0, 0))
         assert(all([c < channel_count for c in channels]))
@@ -130,9 +130,9 @@ class DeviceQualityControlZmqPlugin(ZmqPlugin):
            kwargs['wait_func'] = lambda *args: refresh_gui(0, 0)
         channel_states = np.zeros(channel_count, dtype=int)
         channel_states[list(channels)] = 1
-        df_result = self.execute('wheelerlab.dmf_control_board_plugin',
-                                 'sweep_channels', voltage=voltage,
-                                 frequency=frequency, state=channel_states,
+        df_result = self.execute('dmf_control_board_plugin', 'sweep_channels',
+                                 voltage=voltage, frequency=frequency,
+                                 state=channel_states,
                                  n_sampling_windows=n_sampling_windows,
                                  timeout_s=30., **kwargs).dropna()
         return df_result.loc[df_result.V_actuation > .9 * voltage]
@@ -236,7 +236,7 @@ class DeviceQualityControlPlugin(Plugin):
         hdf_device = 'device'
         hdf_device_shapes = 'shapes'
 
-        device = self.plugin.execute('wheelerlab.device_info_plugin',
+        device = self.plugin.execute('microdrop.device_info_plugin',
                                      'get_device', timeout_s=5.,
                                      wait_func=lambda *args: refresh_gui(0, 0))
 
@@ -290,7 +290,7 @@ class DeviceQualityControlPlugin(Plugin):
         if response != gtk.RESPONSE_OK:
             return
 
-        device = self.plugin.execute('wheelerlab.device_info_plugin',
+        device = self.plugin.execute('microdrop.device_info_plugin',
                                      'get_device', timeout_s=1.,
                                      wait_func=wait_func)
 
@@ -306,13 +306,13 @@ class DeviceQualityControlPlugin(Plugin):
 
         # Request scan of channels from 0MQ interface.
         impedance_structures = \
-            self.plugin.execute('wheelerlab.device_quality_control_plugin',
+            self.plugin.execute('device_quality_control_plugin',
                                 'channel_impedance_structures',
                                 channels=channels, voltage=voltage,
                                 frequency=frequency, slow_scan=slow_scan,
                                 timeout_s=5 * len(channels),
                                 wait_func=wait_func)
-        self.plugin.execute('wheelerlab.device_quality_control_plugin',
+        self.plugin.execute('device_quality_control_plugin',
                             'save_channel_impedances',
                             output_path=output_path,
                             impedance_structures=impedance_structures,
